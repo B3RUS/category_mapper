@@ -1,0 +1,5 @@
+rules.json
+categories.json
+*.xlsx
+*.csv
+*.xlsx#
