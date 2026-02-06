@@ -78,15 +78,34 @@ class AplikacjaKategorii:
     def __init__(self, root):
         self.root = root
         self.root.title("Sortownia Ofert v2.0")
-        self.root.geometry("900x700")
+        self.root.geometry("900x900")
 
         # Nagłówek
         self.label = tk.Label(root, text="Przypisz nowe kategorie do ofert", font=("Arial", 12, "bold"))
         self.label.pack(pady=10)
 
-        # Przycisk startu
-        self.btn_load = tk.Button(root, text="Wybierz plik i zacznij proces", command=self.przetworz_plik, bg="#008CBA", fg="white", font=("Arial", 10, "bold"), height=2)
-        self.btn_load.pack(pady=5, fill='x', padx=50)
+        # Pliki: dwa pola wyboru (wejściowy + wyjściowy) oraz przycisk startu
+        self.input_path_var = tk.StringVar()
+        self.output_path_var = tk.StringVar()
+        self.file_frame = tk.Frame(root)
+        self.file_frame.pack(pady=5, fill='x', padx=10)
+
+        tk.Label(self.file_frame, text="Plik wejściowy:").grid(row=0, column=0, sticky='w')
+        self.entry_input = tk.Entry(self.file_frame, textvariable=self.input_path_var)
+        self.entry_input.grid(row=0, column=1, sticky='we', padx=5)
+        btn_browse_in = tk.Button(self.file_frame, text="Wybierz...", command=lambda: self.browse_input())
+        btn_browse_in.grid(row=0, column=2, padx=4)
+
+        tk.Label(self.file_frame, text="Plik wyjściowy:").grid(row=1, column=0, sticky='w')
+        self.entry_output = tk.Entry(self.file_frame, textvariable=self.output_path_var)
+        self.entry_output.grid(row=1, column=1, sticky='we', padx=5)
+        btn_browse_out = tk.Button(self.file_frame, text="Wybierz...", command=lambda: self.browse_output())
+        btn_browse_out.grid(row=1, column=2, padx=4)
+
+        self.btn_start = tk.Button(self.file_frame, text="Rozpocznij proces", command=lambda: self.przetworz_plik(self.input_path_var.get() or None, self.output_path_var.get() or None), bg="#008CBA", fg="white", font=("Arial", 10, "bold"))
+        self.btn_start.grid(row=0, column=3, rowspan=2, padx=8, sticky='ns')
+        # allow the middle column to expand
+        self.file_frame.columnconfigure(1, weight=1)
 
         # Log
         self.log_area = scrolledtext.ScrolledText(root, height=8, state='disabled', bg="#f0f0f0")
@@ -116,18 +135,11 @@ class AplikacjaKategorii:
 
         self.rules_frame.columnconfigure(1, weight=1)
 
-        self.btn_add_rule = tk.Button(self.rules_frame, text="Dodaj regułę", command=self.dodaj_regule)
-        self.btn_add_rule.grid(row=0, column=2, rowspan=2, padx=5)
+    # Note: individual add/save/rerun buttons removed in favor of the combined 'Dodaj i dopasuj' button
 
-        self.btn_save_rules = tk.Button(self.rules_frame, text="Zapisz reguły", command=self.zapisz_reguly)
-        self.btn_save_rules.grid(row=0, column=3, rowspan=2, padx=5)
-
-        self.btn_rerun_overwrite = tk.Button(self.rules_frame, text="Ponownie dopasuj (nadpisz)", command=self.ponownie_dopasuj)
-        self.btn_rerun_overwrite.grid(row=0, column=4, rowspan=2, padx=5)
-
-        # New: export final button
-        self.btn_export_final = tk.Button(self.rules_frame, text="Export final (id, category_id)", command=self.export_final)
-        self.btn_export_final.grid(row=0, column=5, rowspan=2, padx=5)
+        # New combined: add rule, save, and re-run (overwrite)
+        self.btn_add_and_rerun = tk.Button(self.rules_frame, text="Dodaj i dopasuj", command=self.dodaj_i_dopasuj)
+        self.btn_add_and_rerun.grid(row=0, column=6, rowspan=2, padx=5)
 
         # Lista reguł (z panel sterowania po prawej)
         self.rules_list_frame = tk.Frame(root)
@@ -163,16 +175,26 @@ class AplikacjaKategorii:
         self.unmatched_text.bind('<Control-A>', self._select_all_unmatched)
         # Right-click menu for copy
         self.unmatched_text.bind('<Button-3>', self._show_unmatched_menu)
+        # When user selects text with mouse, auto-fill the keyword entry with selection
+        self.unmatched_text.bind('<ButtonRelease-1>', self._on_unmatched_selection)
+        # Also support keyboard selection (Shift+arrows)
+        self.unmatched_text.bind('<KeyRelease>', self._on_unmatched_selection)
 
-        btns_frame = tk.Frame(self.unmatched_frame)
-        btns_frame.pack(fill='x', pady=4)
-        self.btn_add_from_selection = tk.Button(btns_frame, text="Dodaj regułę z zaznaczenia", command=self.dodaj_z_zaznaczenia)
-        self.btn_add_from_selection.pack(side='left')
+        #btns_frame = tk.Frame(self.unmatched_frame)
+        #btns_frame.pack(fill='x', pady=4)
+        #self.btn_add_from_selection = tk.Button(btns_frame, text="Dodaj regułę z zaznaczenia", command=self.dodaj_z_zaznaczenia)
+        #self.btn_add_from_selection.pack(side='left')
 
         # pamięć
         self.last_df = None
         self.last_input_path = None
         self.last_output_path = None
+
+        # Bottom: export final placed at bottom-right
+        self.bottom_frame = tk.Frame(root)
+        self.bottom_frame.pack(fill='x', side='bottom', padx=10, pady=6)
+        self.btn_export_final = tk.Button(self.bottom_frame, text="Export final (id, category_id)", command=self.export_final)
+        self.btn_export_final.pack(side='right')
 
         self.odswiez_liste_regul()
 
@@ -232,6 +254,30 @@ class AplikacjaKategorii:
             except Exception:
                 pass
 
+    def _on_unmatched_selection(self, event=None):
+        """When user selects text in unmatched_text, copy it into the keyword entry box."""
+        try:
+            # temporarily enable to read selection
+            self.unmatched_text.config(state='normal')
+            sel = self.unmatched_text.get(tk.SEL_FIRST, tk.SEL_LAST).strip()
+        except Exception:
+            sel = ""
+        finally:
+            try:
+                self.unmatched_text.config(state='disabled')
+            except Exception:
+                pass
+        if sel:
+            try:
+                self.entry_keyword.delete(0, tk.END)
+                self.entry_keyword.insert(0, sel)
+                # set focus to keyword entry so user can edit further or press tab
+                self.entry_keyword.focus_set()
+            except Exception:
+                pass
+        # Do not block the event
+        return None
+
     # --- Handlers for the editable category combobox ---
     def _on_category_keyrelease(self, event):
         """Filter combobox values while the user types. Allow arrow/enter keys to behave normally."""
@@ -251,9 +297,22 @@ class AplikacjaKategorii:
         # update dropdown values
         try:
             self.combo_category['values'] = vals
+            # update values and open the dropdown so suggestions stay visible while typing
+            # Note: _on_category_arrow no longer generates synthetic events, so this is safe.
             if vals:
-                # try to open the dropdown so user can navigate with arrows
-                self.combo_category.event_generate('<Down>')
+                try:
+                    # open dropdown but keep focus and caret in the entry so typing can continue
+                    self.combo_category.event_generate('<Down>')
+                    # ensure focus remains in the combobox entry and caret at end
+                    try:
+                        self.combo_category.focus_set()
+                        cur = self.combo_var.get()
+                        # icursor expects an index position
+                        self.combo_category.icursor(len(cur))
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -268,6 +327,16 @@ class AplikacjaKategorii:
             self.combo_var.set(vals[0])
         return 'break'
 
+    def _on_category_arrow(self, event):
+        """Open the dropdown when user presses Up/Down to allow keyboard selection."""
+        try:
+            # Do nothing special here — allow default widget behavior to open/navigate the list
+            pass
+        except Exception:
+            pass
+        # Allow the event to be further processed so arrow keys navigate selections
+        return None
+
     def znajdz_kategorie(self, tytul):
         if not isinstance(tytul, str):
             return None, None
@@ -280,10 +349,15 @@ class AplikacjaKategorii:
                 return nazwa_kategorii, cat_id
         return "", ""
 
-    def przetworz_plik(self):
-        sciezka_wejsciowa = filedialog.askopenfilename(title="Wybierz plik do przeliczenia", filetypes=[("Excel/CSV", "*.xlsx *.xls *.csv")])
+    def przetworz_plik(self, sciezka_wejsciowa=None, sciezka_wyjsciowa=None):
+        """Process input file and write output. If paths are provided, they are used; otherwise file dialogs are shown.
+        """
+        if not sciezka_wejsciowa:
+            sciezka_wejsciowa = filedialog.askopenfilename(title="Wybierz plik do przeliczenia", filetypes=[("Excel/CSV", "*.xlsx *.xls *.csv")])
         if not sciezka_wejsciowa:
             return
+        # show chosen file
+        self.input_path_var.set(sciezka_wejsciowa)
         self.log(f"-> Pobieram: {os.path.basename(sciezka_wejsciowa)}")
         try:
             if sciezka_wejsciowa.endswith('.csv'):
@@ -313,14 +387,19 @@ class AplikacjaKategorii:
                 self.refresh_unmatched_list()
             except Exception:
                 pass
-            sciezka_wyjsciowa = filedialog.asksaveasfilename(
-                title="Gdzie zapisać gotowca?",
-                defaultextension=".xlsx",
-                filetypes=[("Plik Excel", "*.xlsx"), ("Plik CSV", "*.csv")]
-            )
+
+            # if output path not provided, ask where to save
+            if not sciezka_wyjsciowa:
+                sciezka_wyjsciowa = filedialog.asksaveasfilename(
+                    title="Gdzie zapisać gotowca?",
+                    defaultextension=".xlsx",
+                    filetypes=[("Plik Excel", "*.xlsx"), ("Plik CSV", "*.csv")]
+                )
             if not sciezka_wyjsciowa:
                 self.log("-> Anulowano zapis. A szkoda.")
                 return
+            # set output path in UI
+            self.output_path_var.set(sciezka_wyjsciowa)
             if sciezka_wyjsciowa.endswith('.csv'):
                 df.to_csv(sciezka_wyjsciowa, index=False, sep=',')
             else:
@@ -332,6 +411,22 @@ class AplikacjaKategorii:
         except Exception as e:
             self.log(f"-> BŁĄD KRYTYCZNY: {e}")
             messagebox.showerror("Błąd", str(e))
+
+    def browse_input(self):
+        path = filedialog.askopenfilename(title="Wybierz plik do przeliczenia", filetypes=[("Excel/CSV", "*.xlsx *.xls *.csv")])
+        if path:
+            try:
+                self.input_path_var.set(path)
+            except Exception:
+                pass
+
+    def browse_output(self):
+        path = filedialog.asksaveasfilename(title="Gdzie zapisać gotowca?", defaultextension=".xlsx", filetypes=[("Plik Excel", "*.xlsx"), ("Plik CSV", "*.csv")])
+        if path:
+            try:
+                self.output_path_var.set(path)
+            except Exception:
+                pass
 
     def odswiez_liste_regul(self):
         try:
@@ -387,6 +482,38 @@ class AplikacjaKategorii:
         else:
             self.log("-> Błąd zapisu reguł")
             messagebox.showerror("Błąd", "Nie udało się zapisać reguł.")
+
+    def dodaj_i_dopasuj(self):
+        """Add current rule (keyword + category), save to rules.json and immediately re-run matching (overwrite last output).
+        This combines adding, saving and ponowne dopasowanie into one action.
+        """
+        key = self.entry_keyword.get().strip().lower()
+        cat = self.combo_category.get().strip()
+        if not key or not cat:
+            messagebox.showwarning("Uwaga", "Wypełnij oba pola: słowo klucz i kategoria.")
+            return
+
+        # Add new rule at top
+        rules = load_rules()
+        rules.insert(0, (key, cat))
+        saved = save_rules(rules)
+        if saved:
+            self.log(f"-> Dodano regułę: '{key}' -> '{cat}' (i zapisano)")
+        else:
+            self.log(f"-> Błąd przy zapisywaniu reguły: '{key}' -> '{cat}'")
+
+        # clear inputs
+        try:
+            self.entry_keyword.delete(0, tk.END)
+            self.combo_category.set("")
+        except Exception:
+            pass
+
+        # If possible, re-run matching and overwrite last output
+        try:
+            self.ponownie_dopasuj()
+        except Exception as e:
+            self.log(f"-> Błąd podczas ponownego dopasowania po dodaniu reguły: {e}")
 
     def dodaj_z_zaznaczenia(self):
         try:
