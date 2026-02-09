@@ -110,11 +110,3 @@ The project includes automated linting with flake8:
 ```bash
 flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127
 ```
-
-## License
-
-[Add license information here]
-
-## Contributing
-
-[Add contribution guidelines here]
