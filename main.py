@@ -713,7 +713,7 @@ class AplikacjaKategorii:
                 return
 
             # Ask where to save
-            save_path = filedialog.asksaveasfilename(title="Gdzie zapisać finalny plik?", defaultextension='.csv', filetypes=[('Plik CSV', '*.csv'), ('Plik Excel', '*.xlsx')])
+            save_path = filedialog.asksaveasfilename(title="Gdzie zapisać finalny plik?", defaultextension='.xlsx', filetypes=[('Plik Excel', '*.xlsx'), ('Plik CSV', '*.csv')])
             if not save_path:
                 self.log("-> Anulowano eksport finalny.")
                 return
